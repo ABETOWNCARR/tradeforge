@@ -7,3 +7,4 @@ numpy==2.2.1
 httpx==0.28.1
 APScheduler==3.11.0
 python-multipart==0.0.20
+curl_cffi>=0.7.0

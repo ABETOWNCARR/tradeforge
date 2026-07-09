@@ -10,42 +10,18 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
+from market_data import fetch_universe_data, get_candles, get_quote, get_quotes  # re-export
 
-def fetch_universe_data(
-    tickers: list[str], period: str = "3mo", interval: str = "1d"
-) -> dict[str, pd.DataFrame]:
-    """Batch-download OHLC history for many tickers."""
-    if not tickers:
-        return {}
-    try:
-        raw = yf.download(
-            tickers,
-            period=period,
-            interval=interval,
-            group_by="ticker",
-            threads=True,
-            progress=False,
-            auto_adjust=True,
-        )
-    except Exception:
-        return {}
-
-    if raw is None or raw.empty:
-        return {}
-
-    result: dict[str, pd.DataFrame] = {}
-    multi = isinstance(raw.columns, pd.MultiIndex)
-    for ticker in tickers:
-        try:
-            frame = raw[ticker] if multi else raw
-        except KeyError:
-            continue
-        frame = frame.dropna(how="all")
-        if frame is not None and not frame.empty and len(frame) >= 30:
-            result[ticker] = frame
-    return result
+# re-export for existing imports
+__all__ = [
+    "fetch_universe_data",
+    "detect_patterns",
+    "confirm_signal",
+    "get_quote",
+    "get_quotes",
+    "get_candles",
+]
 
 
 def _rsi(series: pd.Series, window: int = 14) -> pd.Series:
@@ -302,77 +278,41 @@ def detect_patterns(data: pd.DataFrame) -> list[dict[str, Any]]:
     return found
 
 
-def confirm_signal(data: pd.DataFrame, pattern: dict) -> bool:
-    """Confirm entry: price past breakout + optional volume."""
+def confirm_signal(data: pd.DataFrame, pattern: dict, *, strict: bool = True) -> bool:
+    """Confirm entry.
+
+    strict=True  → price must clear breakout (+ volume when needs_volume).
+    strict=False → setup mode: allow near-breakout / high-quality patterns for paper trading.
+    """
     if data is None or data.empty or "Close" not in data.columns:
         return False
     price = float(data["Close"].iloc[-1])
     breakout = pattern.get("breakout_level")
     if breakout is None:
-        return False
+        return not strict
+    breakout = float(breakout)
     signal = pattern.get("signal", "bullish")
-    if signal == "bullish" and price < float(breakout):
+
+    if strict:
+        if signal == "bullish" and price < breakout:
+            return False
+        if signal == "bearish" and price > breakout:
+            return False
+        if pattern.get("needs_volume"):
+            return _volume_ratio(data) >= 1.2
+        return True
+
+    # Setup mode (paper-friendly): accept if already through breakout OR within 1.5% of it
+    # with solid confidence. Volume is a soft preference, not a hard block.
+    conf = float(pattern.get("confidence") or 0)
+    if conf < 0.65:
         return False
-    if signal == "bearish" and price > float(breakout):
-        return False
-    if pattern.get("needs_volume"):
-        return _volume_ratio(data) >= 1.2
-    return True
+    if signal == "bullish":
+        # price at least 98.5% of breakout (forming / near trigger)
+        return price >= breakout * 0.985
+    if signal == "bearish":
+        return price <= breakout * 1.015
+    return conf >= 0.7
 
 
-def get_quote(ticker: str) -> Optional[float]:
-    try:
-        t = yf.Ticker(ticker)
-        info = t.fast_info
-        price = getattr(info, "last_price", None) or getattr(info, "lastPrice", None)
-        if price:
-            return float(price)
-        hist = t.history(period="1d")
-        if not hist.empty:
-            return float(hist["Close"].iloc[-1])
-    except Exception:
-        pass
-    return None
-
-
-def get_quotes(tickers: list[str]) -> dict[str, float]:
-    if not tickers:
-        return {}
-    out: dict[str, float] = {}
-    frames = fetch_universe_data(tickers, period="5d", interval="1d")
-    for t, df in frames.items():
-        try:
-            out[t] = round(float(df["Close"].iloc[-1]), 4)
-        except Exception:
-            continue
-    return out
-
-
-def get_candles(ticker: str, timeframe: str = "3mo") -> list[dict]:
-    interval_map = {
-        "1d": ("5d", "1h"),
-        "5d": ("1mo", "1d"),
-        "1mo": ("3mo", "1d"),
-        "3mo": ("6mo", "1d"),
-        "1y": ("1y", "1d"),
-    }
-    period, interval = interval_map.get(timeframe, ("3mo", "1d"))
-    try:
-        df = yf.download(ticker, period=period, interval=interval, progress=False, auto_adjust=True)
-        if df is None or df.empty:
-            return []
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        candles = []
-        for idx, row in df.iterrows():
-            candles.append({
-                "time": idx.isoformat() if hasattr(idx, "isoformat") else str(idx),
-                "open": round(float(row["Open"]), 4),
-                "high": round(float(row["High"]), 4),
-                "low": round(float(row["Low"]), 4),
-                "close": round(float(row["Close"]), 4),
-                "volume": int(row["Volume"]) if not pd.isna(row.get("Volume", 0)) else 0,
-            })
-        return candles
-    except Exception:
-        return []
+# get_quote / get_quotes / get_candles imported from market_data

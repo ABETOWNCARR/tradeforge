@@ -115,6 +115,7 @@ class ConfigUpdate(BaseModel):
     trade_schedule: Optional[str] = None
     allowed_tickers: Optional[list[str]] = None
     auto_exit: Optional[bool] = None
+    entry_style: Optional[str] = None  # setup | confirmed
     strategies: Optional[dict[str, bool]] = None
     fcm_token: Optional[str] = None
 
@@ -223,7 +224,7 @@ def scan(req: ScanRequest):
         if hits:
             results[ticker] = hits
             best = hits[0]
-            if best.get("confidence", 0) >= 0.75:
+            if best.get("confidence", 0) >= 0.70:
                 high_confidence.append({
                     "ticker": ticker,
                     "pattern": best.get("pattern"),
@@ -235,11 +236,27 @@ def scan(req: ScanRequest):
                     "target_level": best.get("target_level"),
                 })
     high_confidence.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+    # Cache signals so auto-trader can still act if a later Yahoo fetch is rate-limited
+    import store as _store
+    from datetime import datetime, timezone as _tz
+    _store.save(
+        "last_scan_signals",
+        {
+            "saved_at": datetime.now(_tz.utc).isoformat(),
+            "tickers_scanned": len(data),
+            "alerts": high_confidence,
+            "results": {k: v for k, v in list(results.items())[:80]},
+        },
+    )
     return {
         "tickers_scanned": len(data),
         "results": results,
         "high_confidence_alerts": high_confidence,
         "market_open": risk.is_market_hours(),
+        "data_ok": len(data) > 0,
+        "message": None
+        if data
+        else "Market data temporarily unavailable (Yahoo rate limit). Try again in a minute.",
     }
 
 
@@ -265,7 +282,9 @@ def register(req: RegisterRequest):
 
 @app.get("/config/{device_id}")
 def get_config(device_id: str):
-    return risk.risk_status(device_id)
+    status = risk.risk_status(device_id)
+    status["last_cycle"] = auto_trader.get_last_cycle(device_id)
+    return status
 
 
 @app.post("/config")

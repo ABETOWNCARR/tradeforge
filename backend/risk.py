@@ -20,7 +20,7 @@ import store
 
 DEFAULT_CONFIG = {
     "trading_mode": "paper",  # paper | approval | live (live reserved)
-    "min_confidence": 0.75,
+    "min_confidence": 0.70,
     "max_trades_per_day": 5,
     "max_position_dollars": 500.0,
     "daily_loss_limit": 200.0,
@@ -29,6 +29,9 @@ DEFAULT_CONFIG = {
     "allowed_tickers": [],
     "trade_schedule": "market_hours_only",  # always | market_hours_only
     "auto_exit": True,
+    # confirmed = price past breakout (+ volume when needed)
+    # setup     = high-confidence pattern even if breakout not fully triggered (better for paper demos)
+    "entry_style": "setup",
     "strategies": {
         "rsi_bounce": True,
         "bull_flag": True,

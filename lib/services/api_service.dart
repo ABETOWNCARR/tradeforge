@@ -147,6 +147,14 @@ class ApiService {
   Future<Map<String, dynamic>> runAutoForDevice(String deviceId) =>
       _post('/auto/run/$deviceId', {});
 
+  Future<Map<String, dynamic>> lastCycle(String deviceId) async {
+    final data = await _get('/config/$deviceId');
+    final last = data['last_cycle'];
+    if (last is Map<String, dynamic>) return last;
+    if (last is Map) return Map<String, dynamic>.from(last);
+    return {};
+  }
+
   Future<String> ensureRegistered() async {
     final id = await DeviceService.getDeviceId();
     try {

@@ -184,7 +184,19 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: state.loading ? null : () => state.runBotCycle(),
+                    onPressed: state.loading
+                        ? null
+                        : () async {
+                            await state.runBotCycle();
+                            if (context.mounted && state.lastCycleMessage != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(state.lastCycleMessage!),
+                                  duration: const Duration(seconds: 5),
+                                ),
+                              );
+                            }
+                          },
                     icon: const Icon(Icons.play_arrow_rounded),
                     label: const Text('Run bot'),
                   ),
@@ -205,6 +217,15 @@ class HomeScreen extends StatelessWidget {
                 ),
               ],
             ),
+            if (state.lastCycleMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Last cycle: ${state.lastCycleMessage}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
           ],
         ),
       ),

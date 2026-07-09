@@ -199,9 +199,55 @@ class BotScreen extends StatelessWidget {
           }),
           const SizedBox(height: 8),
           FilledButton.icon(
-            onPressed: state.loading ? null : () => state.runBotCycle(),
+            onPressed: state.loading
+                ? null
+                : () async {
+                    await state.runBotCycle();
+                    if (context.mounted && state.lastCycleMessage != null) {
+                      final n = (state.lastCycle?['entries'] as List?)?.length ?? 0;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(state.lastCycleMessage!),
+                          backgroundColor: n > 0 ? AppTheme.profit : null,
+                          duration: const Duration(seconds: 5),
+                        ),
+                      );
+                    }
+                  },
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Run bot cycle now'),
+          ),
+          if (state.lastCycleMessage != null) ...[
+            const SizedBox(height: 10),
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  ((state.lastCycle?['entries'] as List?)?.isNotEmpty ?? false)
+                      ? Icons.check_circle_outline
+                      : Icons.info_outline,
+                  color: ((state.lastCycle?['entries'] as List?)?.isNotEmpty ?? false)
+                      ? AppTheme.profit
+                      : AppTheme.warning,
+                ),
+                title: const Text('Last bot cycle', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(state.lastCycleMessage!),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const SectionHeader(
+            title: 'Entry style',
+            subtitle: 'Setup = near breakout (paper-friendly). Confirmed = full breakout only.',
+          ),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'setup', label: Text('Setup'), icon: Icon(Icons.flash_on, size: 16)),
+              ButtonSegment(value: 'confirmed', label: Text('Confirmed'), icon: Icon(Icons.verified, size: 16)),
+            ],
+            selected: {
+              (cfg['entry_style']?.toString() == 'confirmed') ? 'confirmed' : 'setup',
+            },
+            onSelectionChanged: (s) => state.updateConfig({'entry_style': s.first}),
           ),
           const SizedBox(height: 22),
           SectionHeader(

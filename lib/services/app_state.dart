@@ -20,6 +20,8 @@ class AppState extends ChangeNotifier {
   int? tickersScanned;
   DateTime? lastScan;
   bool marketOpen = false;
+  Map<String, dynamic>? lastCycle;
+  String? lastCycleMessage;
 
   bool disclaimerAccepted = false;
   bool onboardingDone = false;
@@ -79,6 +81,11 @@ class AppState extends ChangeNotifier {
       journal = results[2] as List<Map<String, dynamic>>;
       approvals = results[3] as List<Map<String, dynamic>>;
       marketOpen = (results[4] as Map<String, dynamic>)['market_open'] == true;
+      final lc = risk?['last_cycle'];
+      if (lc is Map) {
+        lastCycle = Map<String, dynamic>.from(lc);
+        lastCycleMessage = lastCycle?['message']?.toString();
+      }
       error = null;
     } catch (e) {
       error = e.toString();
@@ -123,11 +130,31 @@ class AppState extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      await api.runAutoForDevice(deviceId!);
+      // Seed server signal cache before the bot cycle so paper auto can
+      // use scan alerts if live Yahoo downloads are rate-limited.
+      try {
+        final data = await api.scan(minConfidence: 0.70);
+        scanResults = Map<String, dynamic>.from(data['results'] as Map? ?? {});
+        tickersScanned = data['tickers_scanned'] as int?;
+        lastScan = DateTime.now();
+        final raw = data['high_confidence_alerts'];
+        if (raw is List) {
+          alerts = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        if (data['data_ok'] == false && data['message'] != null) {
+          lastCycleMessage = data['message'].toString();
+        }
+      } catch (_) {
+        // continue — bot may still use existing cache
+      }
+      final result = await api.runAutoForDevice(deviceId!);
+      lastCycle = result;
+      lastCycleMessage = result['message']?.toString() ??
+          'Entries: ${(result['entries'] as List?)?.length ?? 0}';
       await refreshAll();
-      await runScan(minConfidence: 0.5);
     } catch (e) {
       error = e.toString();
+      lastCycleMessage = e.toString();
     } finally {
       loading = false;
       notifyListeners();
