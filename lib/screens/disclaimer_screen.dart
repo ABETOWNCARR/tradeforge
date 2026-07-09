@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui_bits.dart';
+
 class DisclaimerScreen extends StatefulWidget {
   final VoidCallback onAccept;
   const DisclaimerScreen({super.key, required this.onAccept});
@@ -17,58 +19,89 @@ class _DisclaimerScreenState extends State<DisclaimerScreen> {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(22, 16, 22, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 12),
-              Icon(Icons.shield_moon_outlined, size: 48, color: cs.primary),
-              const SizedBox(height: 16),
-              Text('Before you continue',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text('TradeForge is educational software. Read carefully.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
-              const SizedBox(height: 20),
+              const BrandMark(size: 48),
+              const SizedBox(height: 18),
+              Text(
+                'Before you continue',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'TradeForge is educational, paper-first software. Please read this carefully.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.4,
+                    ),
+              ),
+              const SizedBox(height: 18),
               Expanded(
                 child: Card(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      '• Not financial, investment, or tax advice.\n\n'
-                      '• Paper trading uses virtual money. Results do not predict live performance.\n\n'
-                      '• Chart patterns and confidence scores are heuristic signals, not guarantees.\n\n'
-                      '• All trading involves risk of loss, including loss of principal.\n\n'
-                      '• You are solely responsible for any real-money decisions made outside paper mode.\n\n'
-                      '• Past pattern performance does not guarantee future results.\n\n'
-                      '• By continuing you agree to the in-app Privacy Policy and acknowledge these risks.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _point(context, 'Not financial, investment, or tax advice.'),
+                        _point(context, 'Paper trading uses virtual money. Results do not predict live performance.'),
+                        _point(context, 'Chart patterns and confidence scores are heuristics, not guarantees.'),
+                        _point(context, 'All trading involves risk of loss, including loss of principal.'),
+                        _point(context, 'You are solely responsible for any real-money decisions outside paper mode.'),
+                        _point(context, 'By continuing you acknowledge these risks and the Privacy Policy.'),
+                      ],
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              CheckboxListTile(
-                value: _checked,
-                onChanged: (v) => setState(() => _checked = v ?? false),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text('I understand this is educational / paper-first software'),
+              Material(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(14),
+                child: CheckboxListTile(
+                  value: _checked,
+                  onChanged: (v) => setState(() => _checked = v ?? false),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text(
+                    'I understand this is educational / paper-first software',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _checked ? widget.onAccept : null,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    child: Text('I Agree — Continue'),
-                  ),
+                  child: const Text('I Agree — Continue'),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _point(BuildContext context, String text) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.check_circle_outline, size: 18, color: cs.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4)),
+          ),
+        ],
       ),
     );
   }

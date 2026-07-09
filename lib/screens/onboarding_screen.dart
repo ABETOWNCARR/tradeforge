@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/ui_bits.dart';
+
 class OnboardingScreen extends StatefulWidget {
   final VoidCallback onDone;
   const OnboardingScreen({super.key, required this.onDone});
@@ -14,24 +16,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final _pages = const [
     _PageData(
-      icon: Icons.candlestick_chart,
+      icon: Icons.candlestick_chart_rounded,
       title: 'Scan the market',
       body:
-          'TradeForge scans equities for classic chart patterns — bull flags, triangles, cup & handle, RSI bounces, and volume breakouts.',
+          'Detect classic chart patterns — bull flags, triangles, cup & handle, RSI bounces, and volume breakouts — ranked by confidence.',
     ),
     _PageData(
-      icon: Icons.account_balance_wallet_outlined,
+      icon: Icons.account_balance_wallet_rounded,
       title: 'Paper trade first',
       body:
-          'Start with a \$10,000 virtual portfolio. Test strategies risk-free before you ever consider live capital.',
+          'Practice with a \$10,000 virtual portfolio. Test ideas risk-free before you ever consider live capital.',
     ),
     _PageData(
-      icon: Icons.smart_toy_outlined,
-      title: 'Autonomous bot + hard risk limits',
+      icon: Icons.shield_moon_rounded,
+      title: 'Bot with hard risk limits',
       body:
-          'Run in paper, approval, or paused mode. Kill switch, daily trade caps, position size limits, and stop/target exits are built in.',
+          'Run auto paper or approval mode. Kill switch, daily caps, position size limits, and stop/target exits are built in.',
     ),
   ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +48,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: widget.onDone, child: const Text('Skip')),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  const BrandMark(size: 32),
+                  const SizedBox(width: 10),
+                  Text(
+                    'TradeForge',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  const Spacer(),
+                  TextButton(onPressed: widget.onDone, child: const Text('Skip')),
+                ],
+              ),
             ),
             Expanded(
               child: PageView.builder(
@@ -56,25 +76,38 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircleAvatar(
-                          radius: 48,
-                          backgroundColor: cs.primaryContainer,
-                          child: Icon(p.icon, size: 48, color: cs.onPrimaryContainer),
+                        Container(
+                          width: 108,
+                          height: 108,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [
+                                cs.primary.withValues(alpha: 0.18),
+                                cs.primary.withValues(alpha: 0.06),
+                              ],
+                            ),
+                          ),
+                          child: Icon(p.icon, size: 48, color: cs.primary),
                         ),
-                        const SizedBox(height: 28),
-                        Text(p.title,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 16),
-                        Text(p.body,
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyLarge
-                                ?.copyWith(color: cs.onSurfaceVariant, height: 1.5)),
+                        const SizedBox(height: 32),
+                        Text(
+                          p.title,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
+                              ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          p.body,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                height: 1.5,
+                              ),
+                        ),
                       ],
                     ),
                   );
@@ -86,9 +119,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               children: List.generate(
                 _pages.length,
                 (i) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
+                  duration: const Duration(milliseconds: 220),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: _page == i ? 22 : 8,
+                  width: _page == i ? 24 : 8,
                   height: 8,
                   decoration: BoxDecoration(
                     color: _page == i ? cs.primary : cs.outlineVariant,
@@ -98,7 +131,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+              padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -106,16 +139,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     if (_page < _pages.length - 1) {
                       _controller.nextPage(
                         duration: const Duration(milliseconds: 280),
-                        curve: Curves.easeOut,
+                        curve: Curves.easeOutCubic,
                       );
                     } else {
                       widget.onDone();
                     }
                   },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Text(_page < _pages.length - 1 ? 'Next' : 'Start paper trading'),
-                  ),
+                  child: Text(_page < _pages.length - 1 ? 'Next' : 'Start paper trading'),
                 ),
               ),
             ),

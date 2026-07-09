@@ -10,6 +10,7 @@ import 'screens/scanner_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/app_state.dart';
 import 'theme/app_theme.dart';
+import 'widgets/ui_bits.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,12 +45,13 @@ class _RootGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
 
-    if (!state.disclaimerAccepted && !state.loading) {
-      // still show disclaimer even if backend is down
+    // Branded splash while first prefs load
+    if (!state.disclaimerAccepted && state.loading && !state.onboardingDone) {
+      return const _Splash();
     }
-
-    if (state.loading && !state.disclaimerAccepted && !state.onboardingDone) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    // If bootstrap still loading but we already know gates, still splash briefly on cold start
+    if (state.loading && !state.disclaimerAccepted) {
+      return const _Splash();
     }
 
     if (!state.disclaimerAccepted) {
@@ -59,6 +61,58 @@ class _RootGate extends StatelessWidget {
       return OnboardingScreen(onDone: () => state.completeOnboarding());
     }
     return const MainShell();
+  }
+}
+
+class _Splash extends StatelessWidget {
+  const _Splash();
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: dark
+                ? const [Color(0xFF0B1220), Color(0xFF0F766E)]
+                : const [Color(0xFF0F766E), Color(0xFF14B8A6), Color(0xFF99F6E4)],
+          ),
+        ),
+        child: const SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              BrandMark(size: 72),
+              SizedBox(height: 20),
+              Text(
+                'TradeForge',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Paper-first auto trading',
+                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(height: 36),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -83,21 +137,46 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: _screens[_index]),
+      body: SafeArea(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          child: KeyedSubtree(
+            key: ValueKey(_index),
+            child: _screens[_index],
+          ),
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.radar_outlined), selectedIcon: Icon(Icons.radar), label: 'Scanner'),
           NavigationDestination(
-              icon: Icon(Icons.account_balance_wallet_outlined),
-              selectedIcon: Icon(Icons.account_balance_wallet),
-              label: 'Portfolio'),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Home',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.smart_toy_outlined), selectedIcon: Icon(Icons.smart_toy), label: 'Bot'),
+            icon: Icon(Icons.radar_outlined),
+            selectedIcon: Icon(Icons.radar),
+            label: 'Scanner',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet_rounded),
+            label: 'Portfolio',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.smart_toy_outlined),
+            selectedIcon: Icon(Icons.smart_toy_rounded),
+            label: 'Bot',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: 'Settings',
+          ),
         ],
       ),
     );

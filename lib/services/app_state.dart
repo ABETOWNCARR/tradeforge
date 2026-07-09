@@ -32,9 +32,15 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       disclaimerAccepted = prefs.getBool('disclaimer_accepted') ?? false;
       onboardingDone = prefs.getBool('onboarding_done') ?? false;
+      // Show the right gate quickly before network calls
+      notifyListeners();
       deviceId = await DeviceService.getDeviceId();
-      await api.register(deviceId: deviceId!);
-      await refreshAll();
+      try {
+        await api.register(deviceId: deviceId!);
+        await refreshAll();
+      } catch (e) {
+        error = e.toString();
+      }
     } catch (e) {
       error = e.toString();
     } finally {

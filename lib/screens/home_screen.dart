@@ -1,18 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../services/app_state.dart';
 import '../theme/app_theme.dart';
-import '../widgets/stat_card.dart';
+import '../utils/format.dart';
+import '../widgets/ui_bits.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
-  String _money(num? v) {
-    final f = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
-    return f.format(v ?? 0);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,190 +25,285 @@ class HomeScreen extends StatelessWidget {
     final mode = cfg?['trading_mode']?.toString() ?? 'paper';
     final canTrade = state.risk?['can_trade_now'] == true;
 
-    return RefreshIndicator(
-      onRefresh: state.refreshAll,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+    String statusLabel;
+    Color statusColor;
+    if (kill) {
+      statusLabel = 'Kill switch';
+      statusColor = AppTheme.loss;
+    } else if (paused) {
+      statusLabel = 'Paused';
+      statusColor = AppTheme.warning;
+    } else if (canTrade) {
+      statusLabel = 'Armed';
+      statusColor = AppTheme.profit;
+    } else {
+      statusLabel = 'Idle';
+      statusColor = AppTheme.warning;
+    }
+
+    return LoadingOverlay(
+      loading: state.loading,
+      message: 'Working…',
+      child: RefreshIndicator(
+        onRefresh: state.refreshAll,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+          children: [
+            Row(
+              children: [
+                const BrandMark(size: 38),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TradeForge',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                      ),
+                      Text(
+                        'Paper portfolio',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                StatusPill(
+                  label: state.marketOpen ? 'Market open' : 'Market closed',
+                  color: state.marketOpen ? AppTheme.profit : Colors.blueGrey,
+                  icon: state.marketOpen ? Icons.circle : Icons.nightlight_round,
+                  dense: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _EquityHero(
+              equity: equity,
+              pnl: pnl,
+              pnlPct: pnlPct,
+              pnlColor: pnlColor,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: StatTile(
+                    label: 'Cash',
+                    value: Fmt.money(cash),
+                    icon: Icons.payments_outlined,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: StatTile(
+                    label: 'Positions',
+                    value: '$posCount open',
+                    icon: Icons.pie_chart_outline_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: StatTile(
+                    label: 'Bot mode',
+                    value: mode == 'approval' ? 'Approvals' : 'Auto paper',
+                    icon: Icons.smart_toy_outlined,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: StatTile(
+                    label: 'Status',
+                    value: statusLabel,
+                    valueColor: statusColor,
+                    icon: Icons.shield_outlined,
+                  ),
+                ),
+              ],
+            ),
+            if (state.error != null) ...[
+              const SizedBox(height: 12),
+              Card(
+                color: Theme.of(context).colorScheme.errorContainer,
+                child: ListTile(
+                  leading: Icon(Icons.cloud_off, color: Theme.of(context).colorScheme.onErrorContainer),
+                  title: Text(
+                    'Connection issue',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Pull to refresh. ${state.error}',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 22),
+            SectionHeader(
+              title: 'High-confidence signals',
+              subtitle: state.lastScan != null
+                  ? 'Updated ${Fmt.timeAgo(state.lastScan)}'
+                  : 'Run a scan to populate this list',
+              trailing: TextButton(
+                onPressed: state.loading ? null : () => state.runScan(),
+                child: const Text('Scan'),
+              ),
+            ),
+            if (state.alerts.isEmpty)
+              EmptyStateCard(
+                icon: Icons.radar,
+                title: 'No signals yet',
+                body: 'Scan the market for chart patterns with 75%+ confidence.',
+                action: FilledButton.tonalIcon(
+                  onPressed: state.loading ? null : () => state.runScan(),
+                  icon: const Icon(Icons.radar),
+                  label: const Text('Scan now'),
+                ),
+              )
+            else
+              ...state.alerts.take(8).map((a) => _SignalCard(alert: a)),
+            const SizedBox(height: 20),
+            const SectionHeader(
+              title: 'Quick actions',
+              subtitle: 'Safe controls for paper trading',
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: state.loading ? null : () => state.runBotCycle(),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Run bot'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => state.setKillSwitch(!kill),
+                    icon: Icon(kill ? Icons.play_circle_outline : Icons.stop_circle_outlined),
+                    label: Text(kill ? 'Resume' : 'Kill switch'),
+                    style: kill
+                        ? OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.loss,
+                            side: const BorderSide(color: AppTheme.loss),
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EquityHero extends StatelessWidget {
+  final double equity;
+  final double pnl;
+  final double pnlPct;
+  final Color pnlColor;
+
+  const _EquityHero({
+    required this.equity,
+    required this.pnl,
+    required this.pnlPct,
+    required this.pnlColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? const [Color(0xFF134E4A), Color(0xFF0F766E), Color(0xFF115E59)]
+              : const [Color(0xFF0F766E), Color(0xFF14B8A6), Color(0xFF2DD4BF)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.seed.withValues(alpha: 0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text('TradeForge',
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                'Equity',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              _Chip(
-                label: state.marketOpen ? 'Market open' : 'Market closed',
-                color: state.marketOpen ? AppTheme.profit : Colors.grey,
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'PAPER',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 0.8,
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text('Paper portfolio',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 16),
-          Card(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  colors: [
-                    Theme.of(context).colorScheme.primaryContainer,
-                    Theme.of(context).colorScheme.surface,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Equity', style: Theme.of(context).textTheme.labelLarge),
-                  const SizedBox(height: 4),
-                  Text(_money(equity),
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${pnl >= 0 ? '+' : ''}${_money(pnl)}  (${pnlPct.toStringAsFixed(2)}%)',
-                    style: TextStyle(color: pnlColor, fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                ],
-              ),
+          const SizedBox(height: 8),
+          Text(
+            Fmt.money(equity),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.8,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: StatCard(label: 'Cash', value: _money(cash), icon: Icons.payments_outlined)),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: StatCard(
-                      label: 'Positions', value: '$posCount', icon: Icons.pie_chart_outline)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  label: 'Bot mode',
-                  value: mode.toUpperCase(),
-                  icon: Icons.smart_toy_outlined,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  label: 'Status',
-                  value: kill
-                      ? 'KILL SWITCH'
-                      : paused
-                          ? 'PAUSED'
-                          : canTrade
-                              ? 'ARMED'
-                              : 'IDLE',
-                  valueColor: kill
-                      ? AppTheme.loss
-                      : canTrade
-                          ? AppTheme.profit
-                          : AppTheme.warning,
-                  icon: Icons.shield_outlined,
-                ),
-              ),
-            ],
-          ),
-          if (state.error != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: ListTile(
-                leading: const Icon(Icons.cloud_off),
-                title: const Text('Backend unreachable'),
-                subtitle: Text(
-                  'Start the TradeForge API, then pull to refresh.\n${state.error}',
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${Fmt.signedMoney(pnl)}  (${Fmt.pct(pnlPct, signed: true)})',
+              style: TextStyle(
+                color: pnl >= 0 ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA),
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
               ),
             ),
-          ],
-          const SizedBox(height: 20),
-          Text('High-confidence signals',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          if (state.alerts.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    Icon(Icons.radar, size: 40, color: Theme.of(context).colorScheme.outline),
-                    const SizedBox(height: 8),
-                    const Text('No alerts yet — run a scan from the Scanner tab.'),
-                    const SizedBox(height: 12),
-                    FilledButton.tonal(
-                      onPressed: state.loading ? null : () => state.runScan(),
-                      child: state.loading
-                          ? const SizedBox(
-                              width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Scan now'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            ...state.alerts.take(8).map((a) {
-              final conf = ((a['confidence'] as num?)?.toDouble() ?? 0) * 100;
-              final bullish = a['signal']?.toString() == 'bullish';
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: (bullish ? AppTheme.profit : AppTheme.loss).withValues(alpha: 0.15),
-                    child: Icon(
-                      bullish ? Icons.trending_up : Icons.trending_down,
-                      color: bullish ? AppTheme.profit : AppTheme.loss,
-                    ),
-                  ),
-                  title: Text('${a['ticker']} · ${a['pattern']}'),
-                  subtitle: Text(
-                      '${a['signal']} · stop ${a['stop_level']} · target ${a['target_level']}'),
-                  trailing: Text('${conf.toStringAsFixed(0)}%',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: conf >= 80 ? AppTheme.profit : AppTheme.warning)),
-                ),
-              );
-            }),
-          const SizedBox(height: 16),
-          Text('Quick actions',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: state.loading ? null : () => state.runBotCycle(),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('Run bot cycle'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => state.setKillSwitch(!kill),
-                icon: Icon(kill ? Icons.play_circle_outline : Icons.stop_circle_outlined),
-                label: Text(kill ? 'Disable kill switch' : 'Kill switch'),
-              ),
-            ],
           ),
         ],
       ),
@@ -221,21 +311,89 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _Chip({required this.label, required this.color});
+class _SignalCard extends StatelessWidget {
+  final Map<String, dynamic> alert;
+  const _SignalCard({required this.alert});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
+    final conf = ((alert['confidence'] as num?)?.toDouble() ?? 0);
+    final confPct = conf <= 1 ? conf : conf / 100;
+    final bullish = alert['signal']?.toString() == 'bullish';
+    final color = bullish ? AppTheme.profit : AppTheme.loss;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      bullish ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${alert['ticker']}',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                        ),
+                        Text(
+                          '${alert['pattern']}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusPill(
+                    label: Fmt.confidence(confPct),
+                    color: confPct >= 0.8 ? AppTheme.profit : AppTheme.warning,
+                    dense: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ConfidenceBar(value: confPct),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _mini('Stop', '${alert['stop_level'] ?? '—'}'),
+                  _mini('Target', '${alert['target_level'] ?? '—'}'),
+                  _mini('Signal', '${alert['signal'] ?? '—'}'),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Text(label,
-          style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 12)),
+    );
+  }
+
+  Widget _mini(String k, String v) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(k, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey)),
+          Text(v, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }
