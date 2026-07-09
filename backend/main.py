@@ -92,15 +92,8 @@ class QuotesRequest(BaseModel):
 class RegisterRequest(BaseModel):
     device_id: str
     fcm_token: str = ""
-    trading_mode: str = "paper"
-    min_confidence: float = 0.75
-    max_trades_per_day: int = 5
-    max_position_dollars: float = 500.0
-    daily_loss_limit: float = 200.0
-    is_paused: bool = False
-    kill_switch: bool = False
-    trade_schedule: str = "market_hours_only"
-    allowed_tickers: list[str] = Field(default_factory=list)
+    # Optional overrides only applied for brand-new devices via register_device defaults path.
+    # Existing devices keep their saved config (heartbeat-only register).
 
 
 class ConfigUpdate(BaseModel):
@@ -264,20 +257,20 @@ def scan(req: ScanRequest):
 
 @app.post("/register")
 def register(req: RegisterRequest):
+    # Heartbeat only — do not blast risk settings on every app launch.
+    # New devices get DEFAULT_CONFIG; existing devices keep their limits.
     cfg = auto_trader.register_device(
         req.device_id,
-        fcm_token=req.fcm_token,
-        trading_mode=req.trading_mode,
-        min_confidence=req.min_confidence,
-        max_trades_per_day=req.max_trades_per_day,
-        max_position_dollars=req.max_position_dollars,
-        daily_loss_limit=req.daily_loss_limit,
-        is_paused=req.is_paused,
-        kill_switch=req.kill_switch,
-        trade_schedule=req.trade_schedule,
-        allowed_tickers=req.allowed_tickers,
+        fcm_token=req.fcm_token or None,
     )
     return {"success": True, "config": cfg}
+
+
+@app.post("/daily/reset")
+def reset_daily(device_id: str):
+    """Reset today's entry counter (paper debugging / new session)."""
+    state = risk.reset_daily(device_id)
+    return {"success": True, "daily": state, **risk.risk_status(device_id)}
 
 
 @app.get("/config/{device_id}")
@@ -344,7 +337,13 @@ def trade(req: PaperTradeRequest):
     else:
         raise HTTPException(400, "side must be buy or sell")
     if result.get("success"):
-        risk.record_trade(req.device_id, float(result.get("trade", {}).get("realized_pnl", 0) or 0))
+        is_exit = side == "sell"
+        risk.record_trade(
+            req.device_id,
+            float(result.get("trade", {}).get("realized_pnl", 0) or 0),
+            count_toward_limit=not is_exit,
+            is_exit=is_exit,
+        )
     return result
 
 

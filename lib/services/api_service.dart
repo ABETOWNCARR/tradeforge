@@ -67,22 +67,9 @@ class ApiService {
     return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
   }
 
-  Future<Map<String, dynamic>> register({
-    required String deviceId,
-    String tradingMode = 'paper',
-    double minConfidence = 0.75,
-    int maxTradesPerDay = 5,
-    double maxPositionDollars = 500,
-    double dailyLossLimit = 200,
-  }) {
-    return _post('/register', {
-      'device_id': deviceId,
-      'trading_mode': tradingMode,
-      'min_confidence': minConfidence,
-      'max_trades_per_day': maxTradesPerDay,
-      'max_position_dollars': maxPositionDollars,
-      'daily_loss_limit': dailyLossLimit,
-    });
+  Future<Map<String, dynamic>> register({required String deviceId}) {
+    // Heartbeat only — server keeps existing risk settings for known devices.
+    return _post('/register', {'device_id': deviceId});
   }
 
   Future<Map<String, dynamic>> riskStatus(String deviceId) => _get('/config/$deviceId');

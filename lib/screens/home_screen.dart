@@ -24,6 +24,14 @@ class HomeScreen extends StatelessWidget {
     final paused = cfg?['is_paused'] == true;
     final mode = cfg?['trading_mode']?.toString() ?? 'paper';
     final canTrade = state.risk?['can_trade_now'] == true;
+    final blockedReason = state.risk?['blocked_reason']?.toString();
+    final daily = state.risk?['daily'] as Map<String, dynamic>?;
+    final entriesUsed = (daily?['entries'] as num?)?.toInt() ??
+        (daily?['trades'] as num?)?.toInt() ??
+        0;
+    final entriesMax = (daily?['max_entries'] as num?)?.toInt() ??
+        (cfg?['max_trades_per_day'] as num?)?.toInt() ??
+        15;
 
     String statusLabel;
     Color statusColor;
@@ -37,7 +45,7 @@ class HomeScreen extends StatelessWidget {
       statusLabel = 'Armed';
       statusColor = AppTheme.profit;
     } else {
-      statusLabel = 'Idle';
+      statusLabel = 'Blocked';
       statusColor = AppTheme.warning;
     }
 
@@ -89,22 +97,39 @@ class HomeScreen extends StatelessWidget {
               pnlPct: pnlPct,
               pnlColor: pnlColor,
             ),
+            if (blockedReason != null || !canTrade) ...[
+              const SizedBox(height: 10),
+              Card(
+                color: AppTheme.warning.withValues(alpha: 0.12),
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline, color: AppTheme.warning),
+                  title: const Text('Bot not opening new trades',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(
+                    blockedReason ??
+                        'Daily entries $entriesUsed/$entriesMax used, or all candidates already open. '
+                            'Exits still run every 5 min. Raise the limit on the Bot tab if you want more entries today.',
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: StatTile(
-                    label: 'Cash',
-                    value: Fmt.money(cash),
-                    icon: Icons.payments_outlined,
+                    label: 'Today entries',
+                    value: '$entriesUsed / $entriesMax',
+                    icon: Icons.today_outlined,
+                    valueColor: entriesUsed >= entriesMax ? AppTheme.warning : null,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: StatTile(
-                    label: 'Positions',
-                    value: '$posCount open',
-                    icon: Icons.pie_chart_outline_rounded,
+                    label: 'Cash',
+                    value: Fmt.money(cash),
+                    icon: Icons.payments_outlined,
                   ),
                 ),
               ],
@@ -114,21 +139,27 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: StatTile(
-                    label: 'Bot mode',
-                    value: mode == 'approval' ? 'Approvals' : 'Auto paper',
-                    icon: Icons.smart_toy_outlined,
+                    label: 'Positions',
+                    value: '$posCount open',
+                    icon: Icons.pie_chart_outline_rounded,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: StatTile(
-                    label: 'Status',
-                    value: statusLabel,
-                    valueColor: statusColor,
-                    icon: Icons.shield_outlined,
+                    label: 'Bot mode',
+                    value: mode == 'approval' ? 'Approvals' : 'Auto paper',
+                    icon: Icons.smart_toy_outlined,
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 10),
+            StatTile(
+              label: 'Status',
+              value: statusLabel,
+              valueColor: statusColor,
+              icon: Icons.shield_outlined,
             ),
             if (state.error != null) ...[
               const SizedBox(height: 12),

@@ -35,12 +35,33 @@ PATTERN_STRATEGY_MAP = {
 
 
 def register_device(device_id: str, **kwargs) -> dict:
+    """Register or heartbeat a device.
+
+    Existing configs are preserved. Only explicitly provided non-default
+    heartbeats (e.g. fcm_token) update an already-registered device so the
+    app opening doesn't reset risk limits every launch.
+    """
     configs = store.load("device_configs")
+    existing = configs.get(device_id)
+    if existing:
+        cfg = risk.get_config(device_id)
+        # Only merge keys the caller explicitly wants to refresh
+        for k in ("fcm_token",):
+            if kwargs.get(k) is not None and kwargs.get(k) != "":
+                cfg[k] = kwargs[k]
+        cfg["last_seen_at"] = datetime.now(timezone.utc).isoformat()
+        cfg["device_id"] = device_id
+        configs[device_id] = cfg
+        store.save("device_configs", configs)
+        paper_broker.get_portfolio(device_id)
+        return cfg
+
     cfg = risk.get_config(device_id)
     for k, v in kwargs.items():
         if v is not None:
             cfg[k] = v
     cfg["registered_at"] = datetime.now(timezone.utc).isoformat()
+    cfg["last_seen_at"] = cfg["registered_at"]
     cfg["device_id"] = device_id
     configs[device_id] = cfg
     store.save("device_configs", configs)
@@ -238,7 +259,13 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
     if cfg.get("auto_exit", True):
         summary["exits"] = paper_broker.check_exits(device_id)
         for ex in summary["exits"]:
-            risk.record_trade(device_id, float(ex.get("realized_pnl", 0)))
+            # Exits must NOT burn the daily entry quota
+            risk.record_trade(
+                device_id,
+                float(ex.get("realized_pnl", 0) or 0),
+                count_toward_limit=False,
+                is_exit=True,
+            )
 
     mode = cfg.get("trading_mode", "paper")
     min_conf = float(cfg.get("min_confidence", 0.70))
@@ -330,7 +357,7 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
             mode="paper_auto",
         )
         if result.get("success"):
-            risk.record_trade(device_id, 0.0)
+            risk.record_trade(device_id, 0.0, count_toward_limit=True, is_exit=False)
             summary["entries"].append(result["trade"])
             open_tickers.add(ticker)
         else:
