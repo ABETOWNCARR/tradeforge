@@ -58,7 +58,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshAll() async {
-    if (deviceId == null) deviceId = await DeviceService.getDeviceId();
+    deviceId ??= await DeviceService.getDeviceId();
     final id = deviceId!;
     try {
       final results = await Future.wait([
