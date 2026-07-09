@@ -52,7 +52,19 @@ tradeforge/
 
 ## Quick start
 
-### Backend
+### Production API (Railway)
+
+**Base URL:** https://tradeforge-production-4b30.up.railway.app
+
+| Endpoint | URL |
+|----------|-----|
+| Health | https://tradeforge-production-4b30.up.railway.app/ |
+| Privacy | https://tradeforge-production-4b30.up.railway.app/privacy |
+| Dashboard | Railway project `tradeforge` (service: `tradeforge`) |
+
+The Flutter app defaults to this production URL. No `--dart-define` required for normal runs.
+
+### Backend (local)
 
 ```bash
 cd backend
@@ -64,23 +76,31 @@ uvicorn main:app --reload --port 8000
 
 Health check: http://127.0.0.1:8000/
 
+Redeploy after backend changes:
+
+```bash
+cd backend
+railway up -y --detach
+```
+
 ### Flutter app
 
 ```bash
-# from repo root
+# from repo root — uses production API by default
 flutter pub get
+flutter run
 
-# iOS Simulator / desktop / chrome
+# point at local backend instead
 flutter run --dart-define=BASE_URL=http://127.0.0.1:8000
 
-# Android emulator (special host loopback)
+# Android emulator + local backend
 flutter run --dart-define=BASE_URL=http://10.0.2.2:8000
 ```
 
 ### Manual bot cycle (demo)
 
 ```bash
-curl -X POST http://127.0.0.1:8000/auto/run
+curl -X POST https://tradeforge-production-4b30.up.railway.app/auto/run
 ```
 
 ## Play Store notes

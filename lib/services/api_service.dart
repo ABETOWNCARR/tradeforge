@@ -5,10 +5,10 @@ import 'package:http/http.dart' as http;
 import 'device_service.dart';
 
 class ApiService {
-  /// Override at build time: --dart-define=BASE_URL=https://your-api.example.com
+  /// Override at build time: --dart-define=BASE_URL=http://127.0.0.1:8000
   static const String baseUrl = String.fromEnvironment(
     'BASE_URL',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'https://tradeforge-production-4b30.up.railway.app',
   );
 
   static const Duration _timeout = Duration(seconds: 45);
