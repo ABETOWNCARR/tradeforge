@@ -142,22 +142,42 @@ class BotScreen extends StatelessWidget {
           ),
           _sliderCard(
             context,
-            title: 'Max position',
+            title: 'Position size % of equity',
+            value: (cfg['position_size_pct'] as num?)?.toDouble() ?? 5,
+            min: 1,
+            max: 25,
+            divisions: 24,
+            label: '${((cfg['position_size_pct'] as num?)?.toDouble() ?? 5).round()}%',
+            onChanged: (v) => state.updateConfig({'position_size_pct': v.roundToDouble()}),
+          ),
+          _sliderCard(
+            context,
+            title: 'Max \$ per position (cap)',
             value: (cfg['max_position_dollars'] as num?)?.toDouble() ?? 500,
             min: 50,
-            max: 2000,
-            divisions: 39,
+            max: 5000,
+            divisions: 99,
             label: Fmt.money((cfg['max_position_dollars'] as num?)?.toDouble() ?? 500),
             onChanged: (v) => state.updateConfig({'max_position_dollars': v.roundToDouble()}),
           ),
           _sliderCard(
             context,
-            title: 'Max trades / day',
-            value: ((cfg['max_trades_per_day'] as num?)?.toDouble() ?? 5),
+            title: 'Max open positions',
+            value: ((cfg['max_open_positions'] as num?)?.toDouble() ?? 8),
             min: 1,
             max: 20,
             divisions: 19,
-            label: '${cfg['max_trades_per_day'] ?? 5}',
+            label: '${cfg['max_open_positions'] ?? 8}',
+            onChanged: (v) => state.updateConfig({'max_open_positions': v.round()}),
+          ),
+          _sliderCard(
+            context,
+            title: 'Max entries / day',
+            value: ((cfg['max_trades_per_day'] as num?)?.toDouble() ?? 15),
+            min: 1,
+            max: 40,
+            divisions: 39,
+            label: '${cfg['max_trades_per_day'] ?? 15}',
             onChanged: (v) => state.updateConfig({'max_trades_per_day': v.round()}),
           ),
           _sliderCard(
@@ -175,10 +195,24 @@ class BotScreen extends StatelessWidget {
               leading: const Icon(Icons.today_outlined),
               title: const Text('Today', style: TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text(
-                'Trades ${daily['trades'] ?? 0}  ·  Realized ${Fmt.signedMoney(daily['realized_pnl'] as num?)}',
+                'Entries ${daily['entries'] ?? daily['trades'] ?? 0}'
+                '/${daily['max_entries'] ?? cfg['max_trades_per_day'] ?? 15}'
+                '  ·  Realized ${Fmt.signedMoney(daily['realized_pnl'] as num?)}',
               ),
             ),
           ),
+          if (state.performance?['stats'] != null)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: const Text('Performance', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                  'Win rate ${(state.performance!['stats'] as Map)['win_rate_pct']}%'
+                  '  ·  Buys ${(state.performance!['stats'] as Map)['buys']}'
+                  '  ·  Sells ${(state.performance!['stats'] as Map)['sells']}',
+                ),
+              ),
+            ),
           const SizedBox(height: 18),
           const SectionHeader(title: 'Strategies', subtitle: 'Toggle detectors independently'),
           ..._strategyLabels.entries.map((e) {

@@ -22,31 +22,41 @@ Both apps can detect patterns and drive automated decisions. TradeForge optimize
 
 - Pattern detection: RSI bounce, bull flag, ascending triangle, cup & handle, head & shoulders, MA cross, volume breakout
 - Universe scan with confidence filter
-- Paper portfolio with cash, positions, mark-to-market, journal
-- Auto bot cycles (every 5 min on server) with stops / targets
-- Modes: **auto paper** or **approval required**
-- Risk: kill switch, pause, min confidence, max position $, max trades/day, daily loss limit, market hours only
-- Per-strategy toggles
+- **Sim paper** ($10k virtual) + **Alpaca paper / live** broker path
+- Auto bot cycles (every 5 min) with stops / targets
+- Modes: auto execute or approval-required
+- Risk: kill switch, **% equity sizing**, max $ cap, max open positions, max entries/day, daily loss, market hours
+- Performance stats (win rate, buys/sells)
 - Privacy policy endpoint for Play Store listing
+
+## Broker modes (ready for real money)
+
+| Mode | Money | Keys | Notes |
+|------|-------|------|--------|
+| **sim** | Virtual $10k | None | Default, safest |
+| **alpaca_paper** | Alpaca paper | Paper API keys | Same bot → real broker API |
+| **alpaca_live** | **Real money** | Live keys + confirm | Kill switch + limits still apply |
+
+In the app: **Settings → Brokerage**  
+Keys: https://app.alpaca.markets  
+
+Live switch requires an explicit confirmation dialog (and `live_confirm=true` on the API).
 
 ## Project layout
 
 ```
 tradeforge/
 ├── lib/                 # Flutter app
-│   ├── main.dart
-│   ├── screens/
-│   ├── services/
-│   ├── theme/
-│   └── widgets/
-├── backend/             # FastAPI API
+│   ├── screens/         # includes broker_screen.dart
+│   └── services/
+├── backend/
+│   ├── brokers/         # sim + Alpaca adapters
 │   ├── main.py
 │   ├── patterns.py
 │   ├── paper_broker.py
 │   ├── risk.py
 │   ├── auto_trader.py
-│   └── ticker_universe.json
-├── android/ ios/
+│   └── performance.py
 └── README.md
 ```
 

@@ -22,6 +22,8 @@ class AppState extends ChangeNotifier {
   bool marketOpen = false;
   Map<String, dynamic>? lastCycle;
   String? lastCycleMessage;
+  Map<String, dynamic>? broker;
+  Map<String, dynamic>? performance;
 
   bool disclaimerAccepted = false;
   bool onboardingDone = false;
@@ -86,6 +88,10 @@ class AppState extends ChangeNotifier {
         lastCycle = Map<String, dynamic>.from(lc);
         lastCycleMessage = lastCycle?['message']?.toString();
       }
+      final b = risk?['broker'];
+      broker = b is Map ? Map<String, dynamic>.from(b) : null;
+      final p = risk?['performance'];
+      performance = p is Map ? Map<String, dynamic>.from(p) : null;
       error = null;
     } catch (e) {
       error = e.toString();
@@ -187,6 +193,36 @@ class AppState extends ChangeNotifier {
       dollarAmount: dollars,
       reason: reason,
     );
+    await refreshAll();
+  }
+
+  Future<Map<String, dynamic>> connectAlpaca({
+    required String apiKey,
+    required String apiSecret,
+    bool paper = true,
+    bool enableLive = false,
+  }) async {
+    deviceId ??= await DeviceService.getDeviceId();
+    final res = await api.connectAlpaca(
+      deviceId: deviceId!,
+      apiKey: apiKey,
+      apiSecret: apiSecret,
+      paper: paper,
+      enableLive: enableLive,
+    );
+    await refreshAll();
+    return res;
+  }
+
+  Future<void> disconnectBroker() async {
+    deviceId ??= await DeviceService.getDeviceId();
+    await api.disconnectBroker(deviceId!);
+    await refreshAll();
+  }
+
+  Future<void> setBrokerMode(String mode, {bool liveConfirm = false}) async {
+    deviceId ??= await DeviceService.getDeviceId();
+    await api.setBrokerMode(deviceId: deviceId!, mode: mode, liveConfirm: liveConfirm);
     await refreshAll();
   }
 }

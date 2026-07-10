@@ -14,8 +14,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+import brokers
 import patterns
-import paper_broker
 import risk
 import store
 
@@ -53,6 +53,8 @@ def register_device(device_id: str, **kwargs) -> dict:
         cfg["device_id"] = device_id
         configs[device_id] = cfg
         store.save("device_configs", configs)
+        # ensure sim portfolio exists for hybrid journal/stats
+        import paper_broker
         paper_broker.get_portfolio(device_id)
         return cfg
 
@@ -65,6 +67,7 @@ def register_device(device_id: str, **kwargs) -> dict:
     cfg["device_id"] = device_id
     configs[device_id] = cfg
     store.save("device_configs", configs)
+    import paper_broker
     paper_broker.get_portfolio(device_id)
     return cfg
 
@@ -121,7 +124,7 @@ def resolve_approval(device_id: str, approval_id: str, approve: bool) -> dict:
         store.save("pending_approvals", pending)
         return {"success": True, "status": "rejected"}
 
-    result = paper_broker.buy(
+    result = brokers.buy(
         device_id,
         target["ticker"],
         dollar_amount=float(target.get("dollar_amount", 100)),
@@ -130,13 +133,13 @@ def resolve_approval(device_id: str, approval_id: str, approve: bool) -> dict:
         confidence=float(target.get("confidence", 0)),
         stop_level=target.get("stop_level"),
         target_level=target.get("target_level"),
-        mode="paper_approved",
+        mode="approved",
     )
     target["status"] = "approved" if result.get("success") else "failed"
     target["result"] = result
     store.save("pending_approvals", pending)
     if result.get("success"):
-        risk.record_trade(device_id, 0.0)
+        risk.record_trade(device_id, 0.0, count_toward_limit=True, is_exit=False)
     return {"success": result.get("success", False), "status": target["status"], "result": result}
 
 
@@ -252,12 +255,12 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
         summary["skipped"].append("outside_market_hours")
         summary["message"] = "Outside NYSE market hours — entries skipped"
         if cfg.get("auto_exit", True):
-            summary["exits"] = paper_broker.check_exits(device_id)
+            summary["exits"] = brokers.check_exits(device_id)
         _save_last_cycle(device_id, summary)
         return summary
 
     if cfg.get("auto_exit", True):
-        summary["exits"] = paper_broker.check_exits(device_id)
+        summary["exits"] = brokers.check_exits(device_id)
         for ex in summary["exits"]:
             # Exits must NOT burn the daily entry quota
             risk.record_trade(
@@ -269,11 +272,14 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
 
     mode = cfg.get("trading_mode", "paper")
     min_conf = float(cfg.get("min_confidence", 0.70))
-    max_pos = float(cfg.get("max_position_dollars", 500))
     entry_style = (cfg.get("entry_style") or "setup").lower()
     strict = entry_style == "confirmed"
-    portfolio = paper_broker.mark_to_market(device_id)
-    open_tickers = set(portfolio.get("positions", {}).keys())
+    portfolio = brokers.mark_to_market(device_id)
+    open_tickers = set((portfolio.get("positions") or {}).keys())
+    max_pos = risk.position_size_dollars(device_id, portfolio)
+    max_open = int(cfg.get("max_open_positions", 8))
+    summary["broker_mode"] = portfolio.get("broker_mode") or brokers.get_mode(device_id)
+    summary["position_size_dollars"] = max_pos
 
     stats = {
         "no_pattern": 0,
@@ -323,19 +329,33 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
             summary["skipped"].append(f"{ticker}: already_open")
             continue
 
-        ok, reason = risk.can_trade(device_id, ticker, float(signal["confidence"]), max_pos)
+        if len(open_tickers) >= max_open:
+            stats["risk_blocked"] += 1
+            summary["skipped"].append(f"{ticker}: max_open_positions ({max_open})")
+            continue
+
+        # recompute size as equity changes
+        max_pos = risk.position_size_dollars(device_id, portfolio)
+        ok, reason = risk.can_trade(
+            device_id,
+            ticker,
+            float(signal["confidence"]),
+            max_pos,
+            open_positions=len(open_tickers),
+        )
         if not ok:
             stats["risk_blocked"] += 1
             summary["skipped"].append(f"{ticker}: {reason}")
             continue
 
         entry_style_tag = entry_style
+        broker_tag = summary.get("broker_mode", "sim")
         signal_body = {
             **signal,
             "dollar_amount": max_pos,
             "reason": (
                 f"{signal.get('pattern')} ({float(signal.get('confidence') or 0):.0%}) "
-                f"[{entry_style_tag}/{signal.get('source', 'live')}]"
+                f"[{entry_style_tag}/{signal.get('source', 'live')}/{broker_tag}]"
             ),
         }
 
@@ -345,7 +365,7 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
                 summary["queued"].append(signal_body)
             continue
 
-        result = paper_broker.buy(
+        result = brokers.buy(
             device_id,
             ticker,
             dollar_amount=max_pos,
@@ -354,12 +374,14 @@ def run_cycle_for_device(device_id: str, market_data: dict) -> dict[str, Any]:
             confidence=float(signal_body.get("confidence") or 0),
             stop_level=signal_body.get("stop_level"),
             target_level=signal_body.get("target_level"),
-            mode="paper_auto",
+            mode="auto",
         )
         if result.get("success"):
             risk.record_trade(device_id, 0.0, count_toward_limit=True, is_exit=False)
             summary["entries"].append(result["trade"])
             open_tickers.add(ticker)
+            if result.get("portfolio"):
+                portfolio = result["portfolio"]
         else:
             stats["buy_failed"] += 1
             summary["skipped"].append(f"{ticker}: {result.get('error')}")

@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui_bits.dart';
+import 'broker_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -55,6 +56,27 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const SectionHeader(title: 'Brokerage'),
+        Card(
+          child: ListTile(
+            leading: Icon(
+              state.broker?['is_live'] == true
+                  ? Icons.warning_amber_rounded
+                  : Icons.account_balance_outlined,
+              color: state.broker?['is_live'] == true ? AppTheme.loss : AppTheme.seedDeep,
+            ),
+            title: Text(
+              state.broker?['label']?.toString() ?? 'TradeForge Paper (sim)',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            subtitle: const Text('Sim paper · Alpaca paper · Alpaca live'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BrokerScreen()),
             ),
           ),
         ),

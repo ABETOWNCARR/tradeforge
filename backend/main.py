@@ -20,8 +20,9 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 import auto_trader
-import paper_broker
+import brokers
 import patterns
+import performance
 import risk
 
 UNIVERSE_PATH = Path(__file__).parent / "ticker_universe.json"
@@ -102,6 +103,8 @@ class ConfigUpdate(BaseModel):
     min_confidence: Optional[float] = None
     max_trades_per_day: Optional[int] = None
     max_position_dollars: Optional[float] = None
+    position_size_pct: Optional[float] = None
+    max_open_positions: Optional[int] = None
     daily_loss_limit: Optional[float] = None
     is_paused: Optional[bool] = None
     kill_switch: Optional[bool] = None
@@ -109,6 +112,8 @@ class ConfigUpdate(BaseModel):
     allowed_tickers: Optional[list[str]] = None
     auto_exit: Optional[bool] = None
     entry_style: Optional[str] = None  # setup | confirmed
+    broker_mode: Optional[str] = None  # sim | alpaca_paper | alpaca_live
+    live_enabled: Optional[bool] = None
     strategies: Optional[dict[str, bool]] = None
     fcm_token: Optional[str] = None
 
@@ -122,6 +127,20 @@ class PaperTradeRequest(BaseModel):
     reason: str = "manual"
     stop_level: Optional[float] = None
     target_level: Optional[float] = None
+
+
+class AlpacaConnectRequest(BaseModel):
+    device_id: str
+    api_key: str
+    api_secret: str
+    paper: bool = True
+    enable_live: bool = False
+
+
+class BrokerModeRequest(BaseModel):
+    device_id: str
+    broker_mode: str  # sim | alpaca_paper | alpaca_live
+    live_confirm: bool = False  # required to switch to alpaca_live
 
 
 class ApprovalAction(BaseModel):
@@ -277,6 +296,8 @@ def reset_daily(device_id: str):
 def get_config(device_id: str):
     status = risk.risk_status(device_id)
     status["last_cycle"] = auto_trader.get_last_cycle(device_id)
+    status["broker"] = brokers.get_broker_status(device_id)
+    status["performance"] = performance.summarize(device_id)
     return status
 
 
@@ -284,6 +305,9 @@ def get_config(device_id: str):
 def update_config(req: ConfigUpdate):
     updates = req.model_dump(exclude_none=True)
     device_id = updates.pop("device_id")
+    # Never silently enable live from generic config
+    if updates.get("broker_mode") == "alpaca_live" and not updates.get("live_enabled"):
+        raise HTTPException(400, "Use /broker/mode with live_confirm to enable live trading")
     cfg = risk.set_config(device_id, updates)
     return {"success": True, "config": cfg}
 
@@ -294,29 +318,93 @@ def kill_switch(device_id: str, enabled: bool = True):
     return {"success": True, "config": cfg}
 
 
-# ── Paper portfolio ─────────────────────────────────────────────────────────
+# ── Broker connection (Alpaca paper / live) ─────────────────────────────────
+
+@app.get("/broker/{device_id}")
+def broker_status(device_id: str):
+    return brokers.get_broker_status(device_id)
+
+
+@app.post("/broker/alpaca/connect")
+def broker_alpaca_connect(req: AlpacaConnectRequest):
+    """Connect Alpaca. Default paper=True. Live requires enable_live=True."""
+    if not req.paper and not req.enable_live:
+        raise HTTPException(
+            400,
+            "Refusing live connect without enable_live=true. Start with paper=true.",
+        )
+    result = brokers.connect_alpaca(
+        req.device_id,
+        api_key=req.api_key,
+        api_secret=req.api_secret,
+        paper=req.paper,
+        enable_live=req.enable_live,
+    )
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error") or "Connect failed")
+    return result
+
+
+@app.post("/broker/disconnect")
+def broker_disconnect(device_id: str):
+    return brokers.disconnect_broker(device_id)
+
+
+@app.post("/broker/mode")
+def broker_mode(req: BrokerModeRequest):
+    """Switch sim / alpaca_paper / alpaca_live with live confirmation gate."""
+    mode = req.broker_mode.lower()
+    if mode == "alpaca_live":
+        if not req.live_confirm:
+            raise HTTPException(
+                400,
+                "Switching to LIVE requires live_confirm=true. Real money will be used.",
+            )
+        risk.set_config(req.device_id, {"live_enabled": True, "broker_mode": "alpaca_live"})
+    elif mode == "alpaca_paper":
+        risk.set_config(req.device_id, {"broker_mode": "alpaca_paper", "live_enabled": False})
+    elif mode == "sim":
+        risk.set_config(req.device_id, {"broker_mode": "sim", "live_enabled": False})
+    else:
+        raise HTTPException(400, f"Unknown broker_mode: {mode}")
+    try:
+        if mode != "sim":
+            brokers.set_mode(req.device_id, mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"success": True, "broker": brokers.get_broker_status(req.device_id)}
+
+
+# ── Portfolio (sim or live broker) ──────────────────────────────────────────
 
 @app.get("/portfolio/{device_id}")
 def portfolio(device_id: str):
-    return paper_broker.mark_to_market(device_id)
+    return brokers.mark_to_market(device_id)
 
 
 @app.post("/portfolio/{device_id}/reset")
 def reset_portfolio(device_id: str):
-    p = paper_broker.reset_portfolio(device_id)
-    return {"success": True, "portfolio": paper_broker.mark_to_market(device_id), "raw": p}
+    result = brokers.reset_portfolio(device_id)
+    if not result.get("success", True) and result.get("error"):
+        raise HTTPException(400, result["error"])
+    return result
 
 
 @app.get("/journal/{device_id}")
 def journal(device_id: str, limit: int = 50):
-    return {"trades": paper_broker.get_journal(device_id, limit)}
+    return {"trades": brokers.get_journal(device_id, limit)}
+
+
+@app.get("/performance/{device_id}")
+def perf(device_id: str):
+    return performance.summarize(device_id)
 
 
 @app.post("/trade")
 def trade(req: PaperTradeRequest):
     side = req.side.lower()
     if side == "buy":
-        result = paper_broker.buy(
+        result = brokers.buy(
             req.device_id,
             req.ticker,
             dollar_amount=req.dollar_amount,
@@ -324,15 +412,15 @@ def trade(req: PaperTradeRequest):
             reason=req.reason,
             stop_level=req.stop_level,
             target_level=req.target_level,
-            mode="paper_manual",
+            mode="manual",
         )
     elif side == "sell":
-        result = paper_broker.sell(
+        result = brokers.sell(
             req.device_id,
             req.ticker,
             quantity=req.quantity,
             reason=req.reason,
-            mode="paper_manual",
+            mode="manual",
         )
     else:
         raise HTTPException(400, "side must be buy or sell")

@@ -19,19 +19,21 @@ from zoneinfo import ZoneInfo
 import store
 
 DEFAULT_CONFIG = {
-    "trading_mode": "paper",  # paper | approval | live (live reserved)
+    "trading_mode": "paper",  # paper = auto execute | approval = queue first
+    "broker_mode": "sim",  # sim | alpaca_paper | alpaca_live
+    "live_enabled": False,
     "min_confidence": 0.70,
-    "max_trades_per_day": 15,  # entries only — paper-friendly default
-    "max_position_dollars": 500.0,
+    "max_trades_per_day": 15,  # entries only
+    "max_position_dollars": 500.0,  # hard cap per entry
+    "position_size_pct": 5.0,  # % of equity per new entry (capped by max_position_dollars)
+    "max_open_positions": 8,
     "daily_loss_limit": 200.0,
     "is_paused": False,
     "kill_switch": False,
     "allowed_tickers": [],
-    "trade_schedule": "market_hours_only",  # always | market_hours_only
+    "trade_schedule": "market_hours_only",
     "auto_exit": True,
-    # confirmed = price past breakout (+ volume when needed)
-    # setup     = high-confidence pattern even if breakout not fully triggered
-    "entry_style": "setup",
+    "entry_style": "setup",  # setup | confirmed
     "strategies": {
         "rsi_bounce": True,
         "bull_flag": True,
@@ -147,12 +149,28 @@ def _entry_count(state: dict) -> int:
     return int(state.get("entries", state.get("trades", 0)))
 
 
+def position_size_dollars(device_id: str, portfolio: Optional[dict] = None) -> float:
+    """Dollar size for next entry: min(max_position_dollars, equity * pct/100)."""
+    cfg = get_config(device_id)
+    cap = float(cfg.get("max_position_dollars", 500))
+    pct = float(cfg.get("position_size_pct", 5.0))
+    equity = None
+    if portfolio:
+        equity = portfolio.get("equity")
+    if equity is None:
+        equity = 10_000.0
+    sized = float(equity) * max(0.0, pct) / 100.0
+    # never size below $25 for practical fractionals
+    return round(max(25.0, min(cap, sized)), 2)
+
+
 def can_trade(
     device_id: str,
     ticker: str,
     confidence: float,
     dollar_amount: float,
     portfolio_equity: Optional[float] = None,
+    open_positions: Optional[int] = None,
 ) -> tuple[bool, str]:
     cfg = get_config(device_id)
 
@@ -160,6 +178,8 @@ def can_trade(
         return False, "Kill switch is ON"
     if cfg.get("is_paused"):
         return False, "Trading is paused"
+    if cfg.get("broker_mode") == "alpaca_live" and not cfg.get("live_enabled"):
+        return False, "Live broker locked"
     if cfg.get("trade_schedule") == "market_hours_only" and not is_market_hours():
         return False, "Outside market hours"
     if confidence < float(cfg.get("min_confidence", 0.70)):
@@ -172,6 +192,10 @@ def can_trade(
     max_pos = float(cfg.get("max_position_dollars", 500))
     if dollar_amount > max_pos + 0.01:
         return False, f"Order ${dollar_amount:.0f} exceeds max position ${max_pos:.0f}"
+
+    max_open = int(cfg.get("max_open_positions", 8))
+    if open_positions is not None and open_positions >= max_open:
+        return False, f"Max open positions ({max_open})"
 
     state = _daily_state(device_id)
     max_trades = int(cfg.get("max_trades_per_day", 15))

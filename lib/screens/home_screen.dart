@@ -82,11 +82,23 @@ class HomeScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                StatusPill(
-                  label: state.marketOpen ? 'Market open' : 'Market closed',
-                  color: state.marketOpen ? AppTheme.profit : Colors.blueGrey,
-                  icon: state.marketOpen ? Icons.circle : Icons.nightlight_round,
-                  dense: true,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    StatusPill(
+                      label: state.marketOpen ? 'Market open' : 'Market closed',
+                      color: state.marketOpen ? AppTheme.profit : Colors.blueGrey,
+                      icon: state.marketOpen ? Icons.circle : Icons.nightlight_round,
+                      dense: true,
+                    ),
+                    const SizedBox(height: 6),
+                    StatusPill(
+                      label: state.broker?['label']?.toString() ?? 'Sim paper',
+                      color: state.broker?['is_live'] == true ? AppTheme.loss : AppTheme.seedDeep,
+                      icon: Icons.account_balance_outlined,
+                      dense: true,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -96,6 +108,7 @@ class HomeScreen extends StatelessWidget {
               pnl: pnl,
               pnlPct: pnlPct,
               pnlColor: pnlColor,
+              brokerLabel: state.broker?['label']?.toString(),
             ),
             if (blockedReason != null || !canTrade) ...[
               const SizedBox(height: 10),
@@ -269,17 +282,21 @@ class _EquityHero extends StatelessWidget {
   final double pnl;
   final double pnlPct;
   final Color pnlColor;
+  final String? brokerLabel;
 
   const _EquityHero({
     required this.equity,
     required this.pnl,
     required this.pnlPct,
     required this.pnlColor,
+    this.brokerLabel,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final badge = (brokerLabel ?? 'PAPER').toUpperCase().contains('LIVE') ? 'LIVE' : 'PAPER';
+    final live = badge == 'LIVE';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -288,13 +305,15 @@ class _EquityHero extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: isDark
-              ? const [Color(0xFF134E4A), Color(0xFF0F766E), Color(0xFF115E59)]
-              : const [Color(0xFF0F766E), Color(0xFF14B8A6), Color(0xFF2DD4BF)],
+          colors: live
+              ? const [Color(0xFF7F1D1D), Color(0xFFB91C1C), Color(0xFFDC2626)]
+              : isDark
+                  ? const [Color(0xFF134E4A), Color(0xFF0F766E), Color(0xFF115E59)]
+                  : const [Color(0xFF0F766E), Color(0xFF14B8A6), Color(0xFF2DD4BF)],
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.seed.withValues(alpha: 0.28),
+            color: (live ? AppTheme.loss : AppTheme.seed).withValues(alpha: 0.28),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -319,9 +338,9 @@ class _EquityHero extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'PAPER',
-                  style: TextStyle(
+                child: Text(
+                  badge,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
                     fontSize: 11,

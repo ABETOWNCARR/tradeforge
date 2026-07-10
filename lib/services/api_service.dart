@@ -151,4 +151,40 @@ class ApiService {
     }
     return id;
   }
+
+  Future<Map<String, dynamic>> brokerStatus(String deviceId) => _get('/broker/$deviceId');
+
+  Future<Map<String, dynamic>> connectAlpaca({
+    required String deviceId,
+    required String apiKey,
+    required String apiSecret,
+    bool paper = true,
+    bool enableLive = false,
+  }) {
+    return _post('/broker/alpaca/connect', {
+      'device_id': deviceId,
+      'api_key': apiKey,
+      'api_secret': apiSecret,
+      'paper': paper,
+      'enable_live': enableLive,
+    });
+  }
+
+  Future<Map<String, dynamic>> disconnectBroker(String deviceId) =>
+      _post('/broker/disconnect?device_id=$deviceId', {});
+
+  Future<Map<String, dynamic>> setBrokerMode({
+    required String deviceId,
+    required String mode,
+    bool liveConfirm = false,
+  }) {
+    return _post('/broker/mode', {
+      'device_id': deviceId,
+      'broker_mode': mode,
+      'live_confirm': liveConfirm,
+    });
+  }
+
+  Future<Map<String, dynamic>> performance(String deviceId) =>
+      _get('/performance/$deviceId');
 }
